@@ -11,7 +11,12 @@ import subprocess
 import sys
 
 if sys.platform == 'win32':
-    import _winreg
+    # Python 2/3 compatibility
+    try:
+        import winreg
+    except ImportError:
+        import _winreg as winreg
+
 
 from spoofmac.util import MAC_ADDRESS_R
 
@@ -40,7 +45,8 @@ class LinuxSpoofer(OsSpoofer):
     Linux platform specfic implementation for MAC spoofing.
     """
     def get_interface_mac(self, device):
-        result = subprocess.check_output(["ifconfig", device], stderr=subprocess.STDOUT)
+        result = subprocess.check_output(["ifconfig", device],
+            stderr=subprocess.STDOUT, universal_newlines=True)
         m = re.search("(?<=HWaddr\\s)(.*)", result)
         if not hasattr(m, "group") or m.group(0) == None:
             return None
@@ -58,7 +64,8 @@ class LinuxSpoofer(OsSpoofer):
         # - the adapter name/device associated with this, if any,
         # - the MAC address, if any
 
-        output = subprocess.check_output(["ifconfig"], stderr=subprocess.STDOUT)
+        output = subprocess.check_output(["ifconfig"],
+            stderr=subprocess.STDOUT, universal_newlines=True)
 
         # search for specific adapter gobble through mac address
         details = re.findall("(.*?)HWaddr(.*)", output, re.MULTILINE)
@@ -126,7 +133,8 @@ class WindowsSpoofer(OsSpoofer):
         subprocess.call(cmd)
 
     def get_ipconfig_all(self):
-        result = subprocess.check_output(["ipconfig", "/all"], stderr=subprocess.STDOUT)
+        result = subprocess.check_output(["ipconfig", "/all"],
+            stderr=subprocess.STDOUT, universal_newlines=True)
         return result
 
     def get_interface_mac(self, device):
@@ -217,48 +225,48 @@ class WindowsSpoofer(OsSpoofer):
         description, adapter_name, address, current_address = self.find_interface(device)
 
         # Locate adapter's registry and update network address (mac)
-        reg_hdl = _winreg.ConnectRegistry(None, _winreg.HKEY_LOCAL_MACHINE)
-        key = _winreg.OpenKey(reg_hdl, self.WIN_REGISTRY_PATH)
-        info = _winreg.QueryInfoKey(key)
+        reg_hdl = winreg.ConnectRegistry(None, winreg.HKEY_LOCAL_MACHINE)
+        key = winreg.OpenKey(reg_hdl, self.WIN_REGISTRY_PATH)
+        info = winreg.QueryInfoKey(key)
 
         # Find adapter key based on sub keys
         adapter_key = None
         adapter_path = None
 
         for x in range(info[0]):
-            subkey = _winreg.EnumKey(key, x)
+            subkey = winreg.EnumKey(key, x)
             path = self.WIN_REGISTRY_PATH + "\\" + subkey
 
             if subkey == 'Properties':
                 break
 
             # Check for adapter match for appropriate interface
-            new_key = _winreg.OpenKey(reg_hdl, path)
+            new_key = winreg.OpenKey(reg_hdl, path)
             try:
-                adapterDesc = _winreg.QueryValueEx(new_key, "AdapterModel")
+                adapterDesc = winreg.QueryValueEx(new_key, "AdapterModel")
                 if adapterDesc[0] == description:
                     #print adapterDesc[0]
                     adapter_path = path
                     break
                 else:
-                    _winreg.CloseKey(new_key)
-            except WindowsError, err:
+                    winreg.CloseKey(new_key)
+            except WindowsError as err:
                 if err.errno == 2:  # register value not found, ok to ignore
                     pass
                 else:
                     raise err
 
         if adapter_path is None:
-            _winreg.CloseKey(key)
-            _winreg.CloseKey(reg_hdl)
+            winreg.CloseKey(key)
+            winreg.CloseKey(reg_hdl)
             return
 
         # Registry path found update mac addr
-        adapter_key = _winreg.OpenKey(reg_hdl, adapter_path, 0, _winreg.KEY_WRITE)
-        _winreg.SetValueEx(adapter_key, "NetworkAddress", 0, _winreg.REG_SZ, mac)
-        _winreg.CloseKey(adapter_key)
-        _winreg.CloseKey(key)
-        _winreg.CloseKey(reg_hdl)
+        adapter_key = winreg.OpenKey(reg_hdl, adapter_path, 0, winreg.KEY_WRITE)
+        winreg.SetValueEx(adapter_key, "NetworkAddress", 0, winreg.REG_SZ, mac)
+        winreg.CloseKey(adapter_key)
+        winreg.CloseKey(key)
+        winreg.CloseKey(reg_hdl)
 
         # Adapter must be restarted in order for change to take affect
         self.restart_adapter(adapter_name)
@@ -291,7 +299,7 @@ class MacSpoofer(OsSpoofer):
             subprocess.check_output((
                 'networksetup',
                 '-listallhardwareports'
-            )), re.MULTILINE
+                ), universal_newlines=True), re.MULTILINE
         )
         # Split the results into chunks of 3 (for our three fields) and yield
         # those that match `targets`.
@@ -371,7 +379,7 @@ class MacSpoofer(OsSpoofer):
             result = subprocess.check_output([
                 'ifconfig',
                 device
-            ], stderr=subprocess.STDOUT)
+                ], stderr=subprocess.STDOUT, universal_newlines=True)
         except subprocess.CalledProcessError:
             return None
 
